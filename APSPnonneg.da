@@ -1,0 +1,45 @@
+import sys
+
+
+class G:
+    def __init__(self, weights, n):
+        if len(weights) == n * n:
+            self.weights = weights
+            self.np = n
+        else:
+            print('Input weights error')
+
+    def neighbor(self, p):
+        neighbor_ids = []
+        neighbor_weights = self.weights[p * self.np: (p + 1) * self.np]
+        for i in range(self.np):
+            if neighbor_weights[i] > 0:
+                neighbor_ids.append(i)
+        return neighbor_ids
+
+    def distance(self, i, j):
+        if self.weights[i * self.np + j] == -1:
+            return float("inf")
+        else:
+            return self.weights[i * self.np + j]
+
+
+class P(process):
+    def setup(neighbor:list):
+        self.neighbor = neighbor
+
+
+def main():
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    config(channel="fifo")
+    weights = [
+        0, -1, 3,
+        5, 0, 8,
+        -1, -1, 0,
+    ]
+    graph = G(weights, n)
+    ps = list(new(P, num=n))
+    for i, p in enumerate(ps):
+        print(graph.neighbor(i))
+        setup({p}, [graph.neighbor(i)])
+    start(ps)

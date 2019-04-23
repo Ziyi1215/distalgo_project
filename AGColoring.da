@@ -1,0 +1,90 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+
+
+class P(process):
+    def setup(neighbors:list, idmapping:list, n:int, nid:int, delta:int, q:int, color:int):
+        # ------ROM------
+        self.delta = delta
+        self.q = q
+        self.counter = 0
+        self.nid = nid # Integer id
+        self.idmapping = idmapping
+        self.stage = 0
+        self.reduced_color = None
+
+        # ------RAM------
+        self.color = (math.floor(color / self.q), color % self.q)
+        self.responded = []
+
+    def run():
+        send(('PAYLOAD', self.color, 0), to=neighbors)
+        for i in range(self.q):
+            await(len(self.responded) == len(self.neighbors))
+            msgs = self.responded
+            if self.stage == 0:
+                # Messages for first stage AGColoring
+                if any(map(lambda x: x[1][1] == self.color[1], msgs)):
+                    self.color = (self.color[0], (self.color[0] + self.color[1]) % self.q)
+                else:
+                    self.color = (0, self.color[1])
+                    output('My Color: %s' % str(self.color))
+                    self.stage = 1
+                    self.reduced_color = self.color[1]
+
+                self.responded.clear()
+                send(('PAYLOAD', self.color, 0), to=neighbors)
+            elif self.stage == 1:
+                # We'll still receive all stage 0 messages.
+                # First respond to those still in stage 0.
+                unfinished, finalized = lib.list_group_by(lambda x: x[2] == 0 and x[1][0] != 0, msgs)
+                if unfinished:
+                    # Some of neighbors are still in stage 0.
+                    # Wait for an extra round by sending stage 0 message
+                    self.responded.clear()
+                    send(('PAYLOAD', self.color, 0), to=neighbors)
+                else:
+                    # Now all of our neighbors are in stage 1.
+                    if self.reduced_color <= self.delta + 1:
+                        # We're already in range.
+                        output('Reduced color: ' + str(self.reduced_color))
+                        # self.go_inactive()
+                    else:
+                        # We need to recolor ourself (in the context of stage 1)
+                        # The initial input would be finalized stage 0 colors.
+                        # stage 0 messages would be: (PAYLOAD, color_tuple, stage_mark)
+                        # stage 1 messages would be: (PAYLOAD, color_integer, stage_mark)
+                        # if the stage mark is 0, we extract the second item of the color tuple
+                        # if the stage mark is 1, we extract only the color_integer
+                        finalized_colors = [msg[1][1] if msg[2] == 0 else msg[1] for msg in finalized]
+                        remaining_colors = set([i for i in range(self.delta + 1)]) - set(finalized_colors)
+                        self.reduced_color = min(remaining_colors)
+
+                    self.responded.clear()
+                    send(('PAYLOAD', self.reduced_color, 1), to=neighbors)
+
+        output('exit')
+
+    def receive(msg=('PAYLOAD', color, stage), from_=src):
+        self.responded.append(('PAYLOAD', color, stage))
+
+def main():
+    config(channel="reliable")
+    n = 20
+    ps = new(P, num=n)
+
+    id_mapping = {p: id for id, p in enumerate(ps)}
+    rev_mapping = {id: p for id, p in enumerate(ps)}
+
+    G = lib.gen_random_graph(n)
+    # vis.plot(G, node_text=rev_mapping)
+    # coloring = lib.trivial_coloring(G)
+    delta = lib.calc_delta(G)
+    print('Maximum degree: ' + str(delta))
+
+    for id, adj in G.adjacency():
+        nbs_id = list(adj.keys())
+        nbs_rev = [rev_mapping[i] for i in nbs_id]
+        q = lib.choose_prime(2 * delta)
+        setup({rev_mapping[id]}, (nbs_rev, id_mapping, n, id, delta, q, id))
+    start(ps)

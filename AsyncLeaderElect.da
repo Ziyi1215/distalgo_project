@@ -1,0 +1,77 @@
+import sys
+import random
+
+class P(process):
+    def setup(left:P, right:P):
+        self.leaderid = None
+        self.asleep = True
+        self.msg_left = []
+        self.msg_right = []
+
+    def initiate():
+        if asleep == True:
+            asleep = False
+            send(('probe', self, 0, 1), to={left, right})
+
+    def receive(msg=('probe', j, k, d), from_ =source):
+        if j == self:
+            leaderid = self
+        if source == left:
+            if j > self and d < 2**k:
+                send(('probe', j, k, d + 1), to=right)
+            elif j > self and d >= 2**k:
+                send(('reply', j, k), to=left)
+        if source == right:
+            if j > self and d < 2 ** k:
+                send(('probe', j, k, d + 1), to=left)
+            elif j > self and d >= 2 ** k:
+                send(('reply', j, k), to=right)
+
+    def receive(msg=('reply', j, k), from_ =source):
+        if source == left:
+            msg_left.append(('reply', j, k))
+            if j != self:
+                send(('reply', j, k), to=right)
+            else:
+                if ('reply', j, k) in msg_left:
+                    send(('probe', self, k + 1, 1), to={left, right})
+        if source == right:
+            msg_right.append(('reply', j, k))
+            if j != self:
+                send(('reply', j, k), to=left)
+            else:
+                if ('reply', j, k) in msg_right:
+                    send(('probe', self, k + 1, 1), to={left, right})
+
+    def claim():
+        send(('leader', self), to=left)
+
+    def receive(msg=('leader', winid)):
+        leaderid = winid
+        send(('leader', winid), to=left)
+
+    def run():
+        initiate()
+        if await(leaderid != None):
+            if leaderid == self:
+                claim()
+                output("Leader is " + str(leaderid))
+            else:
+                output("Leader is " + str(leaderid))
+
+
+def main():
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+    config(channel="fifo")
+    ps = list(new(P, num=n))
+    random.shuffle(ps)
+    for i, p in enumerate(ps):
+        if i == len(ps)-1:
+           setup({p}, (ps[i-1], ps[0]))
+        else:
+           setup({p}, (ps[i-1], ps[i+1]))
+    start(ps)
+
+
+
+
